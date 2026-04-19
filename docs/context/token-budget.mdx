@@ -1,195 +1,128 @@
 ---
-title: "Token 预算管理 - 上下文窗口动态计算"
-description: "从源码角度揭示 Claude Code token 预算管理：200K 上下文窗口的动态计算、截断机制、缓存优化和自动压缩的完整链路。"
-keywords: ["Token 预算", "上下文窗口", "token 计算", "截断机制", "缓存优化"]
+title: "令牌预算"
+description: "200K 上下文窗口不是全部。理解 Claude Code 如何管理 token 预算：动态计算、近似 vs 精确计数、分层压缩策略和缓存优化。"
+keywords: ["Token 预算", "上下文窗口", "token 计算", "压缩策略"]
 ---
 
-{/* 本章目标：从源码角度揭示 token 预算的动态计算、截断机制、缓存优化和自动压缩的完整链路 */}
+## 核心约束：200K 不是全部
 
-## 上下文窗口：200K 不是全部
-
-Claude Code 的默认上下文窗口为 200K tokens（`MODEL_CONTEXT_WINDOW_DEFAULT = 200_000`），但实际可用于对话的空间远小于此：
+Claude 的上下文窗口为 200K tokens（部分模型支持 1M），但实际可用于对话的空间远小于此：
 
 ```
 上下文窗口（200K）
-├── 系统提示词（~15-25K，缓存后成本低）
+├── 系统提示词（~15-25K）
 ├── 工具定义（~10-20K，含 MCP 工具）
 ├── 用户上下文（CLAUDE.md、git status 等）
-├── 输出预留（maxOutputTokens）
-│   ├── 默认上限：64K
-│   ├── 实际默认：8K（slot-reservation 优化）
-│   └── 触顶自动升级：一次 64K 重试
-└── 剩余：对话历史空间（随对话增长）
+├── 输出预留（AI 响应的空间）
+└── 剩余：对话历史空间（随对话增长而缩小）
 ```
 
-`getContextWindowForModel()`（`src/utils/context.ts:51`）按 5 级优先级解析窗口大小：
+**设计挑战**：对话历史不断增长，可用空间持续缩小。系统必须在"保留足够的上下文让 AI 理解对话"和"不超出 token 限制"之间持续平衡。
 
-1. `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 环境变量覆盖
-2. 模型名含 `[1m]` 后缀 → 1M tokens
-3. `getModelCapability(model).max_input_tokens`
-4. 1M beta header + 支持的模型（claude-sonnet-4, opus-4-6）
-5. 兜底：200K
+### 上下文窗口的动态解析
 
-**有效上下文** = 窗口大小 - min(maxOutputTokens, 20K)，因为压缩摘要需要预留输出空间。
+上下文窗口大小不是硬编码的。系统按优先级从多个来源解析：
+
+1. 用户环境变量覆盖（强制指定）
+2. 模型名后缀标记（如 `[1m]` 表示 1M 窗口）
+3. 模型自身的能力声明
+4. 特定 beta 功能的支持情况
+5. 兜底值：200K
+
+这种分层解析意味着同一个系统可以适配不同模型和不同配置，而不需要为每种情况写特殊逻辑。
 
 ## Token 计数：近似 vs 精确
 
-系统使用两级 token 计数策略：
+Token 计数是所有预算决策的基础。系统采用两级策略：
 
 ### 近似估算（毫秒级）
 
-```typescript
-// src/services/tokenEstimation.ts
-function roughTokenCountEstimation(content: string, bytesPerToken = 4): number {
-  return Math.round(content.length / bytesPerToken)
-}
-```
+基于一个简单的经验公式：大约每 4 个字节 ≈ 1 个 token。对不同内容类型有调整：
+- **JSON/JSONL**：更密集，每 2 字节 ≈ 1 token
+- **图片/文档**：固定估算值（基于尺寸上限的保守估计）
+- **普通文本**：每 4 字节 ≈ 1 token
 
-对不同内容类型有特殊处理：
-- **JSON/JSONL**：`bytesPerToken = 2`（密集的 `{`, `:`, `,` 符号，每个仅 1-2 token）
-- **图片/文档**：固定 2000 tokens（基于 2000×2000px 上限的保守估计）
-- **thinking block**：按实际文本长度 / 4
-- **tool_use**：序列化 `name + JSON.stringify(input)` 后 / 4
+### 精确计数（需要 API 调用）
 
-### 精确计数（API 调用）
+使用 Anthropic 的 token 计数端点。不同 Provider 的支持程度不同：
 
-使用 Anthropic 的 `beta.messages.countTokens` 端点。在不同 provider 上有不同路径：
+| Provider 类别 | 精确计数支持 | 注意事项 |
+|---------------|-------------|----------|
+| Anthropic 直连 | 原生支持 | 最准确 |
+| 云平台（Bedrock/Vertex） | 各自的 SDK 接口 | 需要额外依赖 |
+| 第三方兼容（OpenAI/Gemini/Grok） | 不支持 | 退回近似估算 |
 
-| Provider | 方法 |
-|----------|------|
-| Anthropic 直连 | `anthropic.beta.messages.countTokens()` |
-| AWS Bedrock | `@aws-sdk/client-bedrock-runtime` 的 `CountTokensCommand` |
-| Google Vertex | Anthropic SDK + beta 过滤 |
-| 兜底（Bedrock 不支持） | 用 Haiku 发送 `max_tokens=1` 的请求，读取 `usage.input_tokens` |
+### 为什么需要两级策略
 
-精确计数在关键决策点使用（压缩前后对比、warning 判断），近似估算在热路径使用（每轮循环的 shouldAutoCompact 检查）。
+近似估算用于**热路径**——每轮 agentic loop 都需要判断"是否需要压缩"，这个检查必须足够快。精确计数用于**关键决策点**——压缩前后对比、费用计算等需要准确数字的场景。
 
-### 3P Provider 的 Token 计数差异
+**设计权衡**：近似估算可能偏差 10-20%，这意味着自动压缩的触发时机可能略有提前或延后。但这个偏差是可以接受的——提前压缩只多花一点 token，延后压缩最多触发一次 API 错误然后紧急压缩。
 
-不同 Provider 的精确 token 计数实现方式不同，部分 provider 甚至不支持精确计数：
+## 分层压缩策略
 
-| Provider | 计数方式 | 注意事项 |
-|----------|---------|---------|
-| **Anthropic 直连** | `anthropic.beta.messages.countTokens()` | 标准 API，最准确 |
-| **AWS Bedrock** | `CountTokensCommand` | 需要动态加载 279KB AWS SDK |
-| **Google Vertex** | Anthropic SDK + beta 过滤 | 需要特定 beta headers |
-| **OpenAI 兼容层** | 无精确计数 | **退回到近似估算** |
-| **Gemini 兼容层** | 无精确计数 | **退回到近似估算** |
-| **Bedrock 不支持时** | 用 Haiku 发送 `max_tokens=1` 请求 | 读取 `usage.input_tokens` |
+系统不是等到"满了才压缩"，而是采用了由轻到重的分层策略：
 
-OpenAI 和 Gemini 兼容层**不支持精确 token 计数**，系统会退回到近似估算。这会影响：
-- **自动压缩触发时机**：可能略有偏差
-- **压缩前后 token 对比**：仅为估算值，非精确
-- **Warning/Error 阈值判断**：基于估算而非精确计数
+### 第一层：工具结果截断
 
-```typescript
-// src/services/tokenEstimation.ts - 近似估算函数
-function roughTokenCountEstimation(content: string, bytesPerToken = 4): number {
-  return Math.round(content.length / bytesPerToken)
-}
-```
+单个工具的输出有硬性上限（通常 100K 字符）。超长的命令输出、文件内容在写入消息前就被截断。
 
-源码路径：`src/services/tokenEstimation.ts`
+这是最轻量的"压缩"——只是防止单个工具结果占用过多空间。
 
-## 自动压缩的触发阈值
+### 第二层：微压缩（Micro-Compact）
 
-```
-src/services/compact/autoCompact.ts — 核心阈值
-```
+在触发全量压缩之前，系统先尝试只压缩旧的工具调用结果：
 
-| 常量 | 值 | 含义 |
-|------|----|------|
-| `AUTOCOMPACT_BUFFER_TOKENS` | 13,000 | 窗口减去此值 = 自动压缩触发点 |
-| `WARNING_THRESHOLD_BUFFER_TOKENS` | 20,000 | 在触发点 + 20K 处显示警告 |
-| `ERROR_THRESHOLD_BUFFER_TOKENS` | 20,000 | 在触发点 + 20K 处显示错误 |
-| `MANUAL_COMPACT_BUFFER_TOKENS` | 3,000 | 手动 /compact 的阻塞上限 |
-| `MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES` | 3 | 连续失败 3 次后停止尝试 |
-
-以 200K 窗口为例：
-- **~167K**：warning 闪烁，用户看到建议压缩的提示
-- **~180K**：自动压缩触发（200K - 20K 输出预留 = 180K 有效，再 - 13K buffer）
-- **~197K**：达到 blocking limit，新消息被阻止
-
-`shouldAutoCompact()` 有多个逃逸条件：
-- `compact` / `session_memory` 来源的查询永不触发（防递归死锁）
-- `DISABLE_COMPACT` / `DISABLE_AUTO_COMPACT` 环境变量
-- 用户配置 `autoCompactEnabled = false`
-- Context Collapse 模式激活时抑制（collapse 自己管理上下文）
-- Reactive Compact 实验模式下抑制主动压缩
-- 超过连续失败上限（circuit breaker）
-
-## Micro-Compact：工具结果的渐进式压缩
-
-在触发全量压缩之前，系统先尝试 **micro-compact**——只压缩旧的工具调用结果：
-
-```
-可压缩工具列表（COMPACTABLE_TOOLS）：
-FileRead, Bash, Grep, Glob, WebSearch, WebFetch, FileEdit, FileWrite
-```
-
-策略基于时间：
-- 超过一定时间（由 `timeBasedMCConfig` 控制）的工具结果被替换为简短占位符
+- 超过一定时间的工具结果被替换为简短占位符
 - 图片/文档结果替换为 `[image]` / `[document]` 文本
-- 每次替换释放 tokens，可能推迟全量压缩
+- 每次替换释放 token，可能推迟全量压缩的触发
 
-工具本身也有 `maxResultSizeChars`（通常 100K）硬限制，超长结果在写入消息前就被截断。
+**设计考量**：为什么不直接全量压缩？因为全量压缩需要调用 AI 生成摘要，成本高且耗时。微压缩是确定性操作（简单替换），几乎零成本，可以频繁执行。
 
-## 全量压缩的完整流程
+### 第三层：自动压缩（Auto-Compact）
 
-```
-autoCompactIfNeeded() / compactConversation()
-  ↓
-1. 执行 PreCompact hooks（外部可注入自定义指令）
-  ↓
-2. 尝试 Session Memory 压缩（更轻量，优先尝试）
-  ↓
-3. Session Memory 失败 → 全量压缩
-   a. 图片/文档从消息中剥离（替换为 [image]/[document]）
-   b. skill_discovery/skill_listing 附件剥离（压缩后会重新注入）
-   c. 通过 forked agent 发送摘要请求（复用主线程的 prompt cache）
-   d. 如果摘要请求本身触发 prompt-too-long → truncateHeadForPTLRetry()
-      从最老的 API 轮次开始删除，重试最多 3 次
-   ↓
-4. 压缩成功后重建上下文：
-   - compactBoundaryMarker（记录压缩类型、前 token 数等）
-   - 摘要消息（不可见的 user 消息）
-   - 最近 5 个文件的重新读取（POST_COMPACT_TOKEN_BUDGET = 50K）
-   - plan 文件附件（如果有）
-   - plan mode 指令（如果在计划模式中）
-   - 已调用的 skill 内容（每 skill ≤5K，总计 ≤25K）
-   - deferred tools / agent listing / MCP 指令的增量重新注入
-   - SessionStart hooks 重新执行
-   - PostCompact hooks 执行
-  ↓
-5. 更新缓存基线，防止被误判为 cache break
-```
+当对话接近 token 上限时，系统用 AI 自身来总结之前的对话：
 
-### Prompt Cache Sharing
+1. **剥离非必要内容**：图片、文档附件被替换为文本标记
+2. **生成摘要**：通过一个独立的 agent 调用生成对话摘要
+3. **重建上下文**：用摘要替代原始对话，同时重新注入关键信息（最近操作的文件、活跃的计划等）
 
-压缩 API 调用是整个会话中最昂贵的操作之一。系统通过 `runForkedAgent` 复用主线程的缓存前缀（system prompt + tools + context messages），将缓存命中率从 2% 提升到接近 100%。这个优化单独节省了舰队级约 0.76% 的 `cache_creation` tokens。
+**设计考量**：压缩后会重新读取最近操作的 5 个文件。这是因为在实际使用中，AI 最可能需要的就是刚刚操作过的文件——重新读取它们比让 AI 再次搜索更高效。
+
+### 压缩的安全阀
+
+- **连续失败上限**：连续 3 次压缩失败后停止尝试（断路器模式）
+- **压缩来源的查询不触发压缩**：防止压缩本身触发无限递归
+- **手动压缩**：用户可以随时通过 `/compact` 主动触发
+
+## 缓存感知的压缩设计
+
+压缩操作本身需要调用 API 生成摘要——这是整个会话中最昂贵的操作之一。系统通过**复用主线程的缓存前缀**来优化：
+
+系统 prompt + 工具定义 + 上下文消息通常不变，这部分可以通过 API 的 prompt cache 机制缓存。压缩时的摘要请求复用了这些缓存，使得缓存命中率从接近 0% 提升到接近 100%。
+
+**设计洞察**：这不是一个独立的优化——它是整个缓存策略的一部分。系统 prompt 的组装策略（"不变内容在前"）和压缩时的缓存复用，都是为了最大化 prompt cache 的命中率。
 
 ## 输出 Token 的 Slot 优化
 
-一个经常被忽视的优化：**maxOutputTokens 的动态调整**。
+一个容易被忽视但影响深远的优化：AI 输出的 token 上限默认只设为 8K，而不是模型支持的最大值（32K 或 64K）。
 
-```typescript
-// src/services/api/claude.ts — getMaxOutputTokensForModel()
-const defaultTokens = isMaxTokensCapEnabled()
-  ? Math.min(maxOutputTokens.default, 8_000)  // 默认降到 8K
-  : maxOutputTokens.default                     // 原始默认 32K/64K
-```
+**为什么**？因为 API 服务端按 `max_tokens` 参数预留推理容量（slot）。99% 的请求实际输出不到 5K tokens，但如果所有请求都预留 32K 的 slot，会导致严重的容量浪费。
 
-为什么？因为 API 的 slot 机制按 `max_tokens` 预留推理容量。BQ p99 输出仅 4,911 tokens，32K 默认值浪费了 8-16 倍的 slot 容量。降到 8K 后，不到 1% 的请求被截断——这些请求会自动获得一次 64K 的 clean retry。
+降到 8K 后，不到 1% 的请求会被截断——这些请求自动获得一次高上限的干净重试。
 
-这个优化对 token 预算的影响是间接的：更多的 slot 容量意味着更少的排队延迟，间接减少了超时和重试。
+**设计哲学**：用 1% 的请求多一次重试的代价，换取 99% 请求的更快响应。这是一个典型的"优化常见路径，用重试处理边缘情况"的设计模式。
 
-## Partial Compact：选择性地压缩
+## 选择性压缩
 
-除了全量压缩，用户还可以在消息历史中选择某个位置，只压缩该位置之前或之后的内容：
+除了全量压缩，用户还可以选择只压缩对话的某一部分：
 
-- **`up_to` 方向**：压缩选中消息之前的内容，保留最近的对话
-- **`from` 方向**：压缩选中消息之后的内容，保留早期的对话
+- **压缩早期内容**（保留最近对话）：适用于"开头说了很多背景，但后面只需要关注最近操作"的场景
+- **压缩近期内容**（保留早期对话）：适用于"早期的架构决策很重要，但最近的工具调用结果不需要"的场景
 
-`from` 方向保留 prompt cache（前缀不变），`up_to` 方向则破坏 cache（摘要插在保留内容之前）。
+两种方向对缓存有不同的影响——保留前缀（早期内容）可以维持 prompt cache，修改前缀则破坏缓存。
 
-两种方向的 PTL（prompt-too-long）重试策略相同：从最老的 API 轮次开始删除，确保至少保留一组消息供摘要。
+## 接下来
+
+- **上下文压缩** — 深入了解压缩的触发条件和摘要生成机制
+- **项目记忆** — 理解跨会话的记忆持久化设计
+- **穷鬼模式** — 了解如何减少 token 消耗
