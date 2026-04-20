@@ -1,151 +1,82 @@
 ---
-title: "计划模式 - Plan Mode 先看后做的安全机制"
-description: "基于源码解析 Claude Code Plan Mode 的完整实现：EnterPlanModeTool/ExitPlanModeV2Tool 的工具设计、权限上下文切换机制、Prompt-based 权限请求、计划文件持久化、Teammate 审批流程。"
-keywords: ["Plan Mode", "计划模式", "EnterPlanMode", "ExitPlanMode", "prepareContextForPlanMode", "allowedPrompts"]
+title: "Plan Mode"
+description: "先看后做的安全机制。Plan Mode 让 AI 在探索阶段只能读不能写，形成方案后再提交用户审批。理解权限收窄、Prompt-based 权限和计划持久化的设计。"
+keywords: ["Plan Mode", "计划模式", "先规划再执行", "安全工作流"]
 ---
 
-{/* 本章目标：基于源码揭示 Plan Mode 的完整实现 */}
-
-## 问题场景
+## 核心问题
 
 你说"重构这个模块"，AI 立刻开始改代码——但你还没搞清楚它打算怎么改。等改了一半发现方向不对，已经来不及了。
 
-## Plan Mode 的解决方案
+## 解决方案：先看后做
 
-计划模式给对话加了一个"只读阶段"，通过两个工具实现闭环：
+Plan Mode 给对话加了一个"只读阶段"：
 
 <Steps>
-  <Step title="EnterPlanMode — 进入计划模式">
-    AI 自主判断（或用户触发）任务需要规划，调用 `EnterPlanModeTool`（`packages/builtin-tools/src/tools/EnterPlanModeTool/EnterPlanModeTool.ts:36`）。该工具需要**用户审批**（`checkPermissions` 返回 `ask`）。
+  <Step title="进入计划模式">
+    AI 判断任务需要规划，请求进入 Plan Mode。需要**用户审批**。
   </Step>
-  <Step title="探索阶段 — 只读工具集">
-    权限模式切换为 `'plan'`，AI 只能使用 `isReadOnly()` 为 true 的工具（Read、Grep、Glob、Agent 等）。写操作被自动拒绝。
+  <Step title="探索阶段">
+    AI 只能使用只读工具（Read、Grep、Glob）。写操作被自动拒绝。
   </Step>
-  <Step title="ExitPlanMode — 提交方案审批">
-    AI 完成探索后，调用 `ExitPlanModeV2Tool`（`packages/builtin-tools/src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:147`），将计划文件提交给用户审阅。这是第二个**需要用户审批**的节点。
+  <Step title="提交方案审批">
+    AI 完成探索后，将计划文件提交给用户审阅。这是第二个**需要审批**的节点。
   </Step>
-  <Step title="恢复执行 — 全部工具权限">
-    用户批准后，权限模式恢复为进入前的状态，AI 按计划执行。
+  <Step title="恢复执行">
+    用户批准后，权限恢复，AI 按计划执行。
   </Step>
 </Steps>
 
+**两个审批节点的设计**：进入时审批（"我可以探索吗？"）和退出时审批（"这个方案可以吗？"）。两次审批确保用户对过程和结果都有控制权。
+
 ## 权限的自动收窄与恢复
 
-### 进入：`prepareContextForPlanMode()`
+### 进入：只读锁定
 
-`EnterPlanModeTool.call()`（第 77 行）的核心逻辑：
+权限模式切换为 `plan`，所有工具的 `isReadOnly()` 检查成为唯一准入条件。不是"某些工具被禁用"，而是"只有标记为只读的工具才能执行"。
 
-```typescript
-// 1. 记录转换状态（保存之前的模式）
-handlePlanModeTransition(currentMode, 'plan')
+**设计考量**：基于属性而非名单的权限控制更安全。如果新增了一个工具但忘记把它加入"plan 模式禁用名单"，基于名单的系统会漏过它；但基于 `isReadOnly()` 的系统不会——新工具必须显式声明自己只读才能在 Plan Mode 中使用。
 
-// 2. 切换权限上下文为 plan 模式
-context.setAppState(prev => ({
-  ...prev,
-  toolPermissionContext: applyPermissionUpdate(
-    prepareContextForPlanMode(prev.toolPermissionContext),
-    { type: 'setMode', mode: 'plan', destination: 'session' },
-  ),
-}))
-```
+### 退出：Prompt-based 权限
 
-`prepareContextForPlanMode()`（`src/utils/permissions/permissionSetup.ts`）做了什么：
-- 创建新的 `ToolPermissionContext`，`mode` 设为 `'plan'`
-- 在 plan 模式下，工具的 `isReadOnly()` 检查成为唯一准入条件
-- 如果用户的默认模式是 `'auto'`，还会激活 classifier 的副作用
+AI 可以在计划中声明它需要执行的命令类别。用户批准计划后，这些命令自动放行。
 
-### 退出：权限恢复 + Prompt-based 权限
+**设计洞察**：这是 Plan Mode 最精妙的设计。传统做法是：计划完成后，AI 每执行一步都要用户确认。Prompt-based 权限让用户在审批计划时"一揽子"授权了后续操作——既减少了打断，又保持了控制。
 
-`ExitPlanModeV2Tool` 的退出逻辑做了两件关键的事：
+当然，AI 只能获得计划中声明的权限。如果计划说"运行测试"，AI 不能突然执行 `rm -rf /`。
 
-**1. 恢复权限模式**
+## 计划文件：可编辑的方案
 
-通过 `handlePlanModeTransition()` 和 `applyPermissionUpdate()` 恢复到进入前的模式。
+计划内容被写入磁盘文件，用户可以在审批前修改 AI 的方案。
 
-**2. 注入 Prompt-based 权限**
+**为什么不直接在对话中展示计划**？
+1. 对话中的计划是"只读"的，用户无法直接修改
+2. 磁盘文件可以被用户用任何编辑器修改
+3. 修改后的计划成为 AI 执行的"合约"——AI 必须执行用户修改后的版本
 
-这是 Plan Mode 最精妙的设计——AI 可以在计划中声明它需要执行的命令类别：
+## 什么时候该用 Plan Mode
 
-```typescript
-// ExitPlanModeV2Tool 的 inputSchema
-allowedPrompts: z.array(z.object({
-  tool: z.enum(['Bash']),
-  prompt: z.string().describe('Semantic description, e.g. "run tests"'),
-})).optional()
-```
+| 场景 | 应该用吗 | 原因 |
+|------|:--------:|------|
+| 修复 typo | 跳过 | 改动明确，无需规划 |
+| 添加删除按钮 | 通常跳过 | 路径明确 |
+| 重构认证系统 | **使用** | 高影响，需要理解全局 |
+| 架构决策（Redis vs 内存缓存） | **使用** | 需要权衡多种方案 |
+| 用户说"开始做 X" | 通常跳过 | 用户已明确意图 |
 
-当 AI 提交计划时，如果声明了 `allowedPrompts: [{ tool: 'Bash', prompt: 'run tests' }]`，用户批准后，"run tests" 这类 Bash 命令会被自动放行——不再需要逐个确认。
+**设计哲学**：Plan Mode 是工具而非默认行为。AI 应该在"不确定性高"时使用它，而不是在每次修改时都进入。过度使用 Plan Mode 会降低效率，如同人类在每次改代码前都写设计文档一样低效。
 
-## 计划文件的持久化
+## 与任务系统的配合
 
-计划内容被写入磁盘文件（由 `getPlanFilePath()` 确定路径），这与简单的"AI 说一段话然后开始执行"有本质区别：
-
-1. `ExitPlanModeV2Tool` 的 `normalizeToolInput` 从磁盘读取计划内容，注入到 `input.plan` 和 `input.planFilePath`
-2. 计划文件是用户**可编辑**的——用户可以在审批前修改 AI 的方案
-3. `planWasEdited` 字段标记用户是否修改了计划，影响后续的 tool_result 回显
-4. `persistFileSnapshotIfRemote()` 在远程场景下保存文件快照
-
-## Teammate 场景下的计划审批
-
-在 Agent Swarms（`isAgentSwarmsEnabled()`）模式下，计划审批有额外的协作流程：
-
-```typescript
-// 如果是 Teammate 角色
-if (isTeammate()) {
-  // 发送计划到 Team Leader 的 mailbox 等待审批
-  const requestId = generateRequestId()
-  writeToMailbox(getTeamName(), {
-    type: 'plan_approval_request',
-    plan, requestId, ...
-  })
-  // 返回 awaitingLeaderApproval: true
-  // Team Leader 审批后通过 mailbox 通知 Teammate
-}
-```
-
-这意味着在蜂群模式下，计划可能不是由直接用户审批，而是由 Team Leader 审批。
-
-## 什么时候该用计划模式
-
-`EnterPlanModeTool` 的 Prompt（`packages/builtin-tools/src/tools/EnterPlanModeTool/prompt.ts`）定义了两套触发标准——外部版本更积极（鼓励规划），内部版本更克制（仅在真正模糊时使用）：
-
-| 场景 | 外部版本 | 内部版本 |
-|------|---------|---------|
-| 修复 typo | 跳过 | 跳过 |
-| 添加删除按钮 | **进入**（涉及多个文件） | **跳过**（路径明确） |
-| 重构认证系统 | **进入** | **进入**（高影响重构） |
-| "开始做 X" | — | **跳过**（直接开始） |
-| 架构决策（Redis vs 内存缓存） | **进入** | **进入**（真正模糊） |
-
-## 计划模式 + 任务系统
-
-计划模式通常与任务系统配合使用：
-
-1. 在计划模式中，AI 把实施步骤创建为任务列表（`TodoWrite`）
+Plan Mode 通常与任务系统配合：
+1. AI 在探索阶段创建任务列表
 2. 用户审批计划（包含任务列表）
-3. 退出计划模式后，AI 按任务列表逐项执行
-4. 用户可以通过任务列表追踪进度
+3. 退出 Plan Mode 后，AI 按任务列表逐项执行
 
-## 完整生命周期
+这把"理解"和"执行"在时间上分开了——先花时间理解问题，再高效执行方案。
 
-```
-用户: "重构这个模块"
-  ↓
-AI 判断需要规划 → 调用 EnterPlanModeTool
-  ↓ 用户审批（Ask 对话框）
-handlePlanModeTransition(default, 'plan')  // 保存 default
-prepareContextForPlanMode()                // 创建只读上下文
-  ↓
-AI 使用 Read/Grep/Glob/Agent 探索代码库
-  ↓ （可能 10+ 轮只读工具调用）
-AI 形成方案 → 调用 ExitPlanModeV2Tool({
-  allowedPrompts: [
-    { tool: 'Bash', prompt: 'run tests' },
-    { tool: 'Bash', prompt: 'install dependencies' }
-  ]
-})
-  ↓ 用户审批计划（可编辑计划文件）
-恢复权限模式 → 注入 prompt-based 权限
-  ↓
-AI 使用全部工具执行计划，"run tests" 等命令自动放行
-```
+## 接下来
+
+- **权限模型** — 理解支撑 Plan Mode 的完整权限体系
+- **任务管理** — 理解 Plan Mode 中创建的任务追踪
+- **子 Agent** — 理解 Plan Mode 中使用的 Explore Agent
