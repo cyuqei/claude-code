@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test'
-import { getSpeciesData, getAllSpeciesData, DEX_TO_SPECIES } from '../data/species'
+import { getSpeciesData, getAllSpeciesData, DEX_TO_SPECIES, ensureSpeciesData } from '../data/species'
 import { ALL_SPECIES_IDS } from '../types'
 import type { SpeciesId } from '../types'
 
@@ -65,5 +65,31 @@ describe('DEX_TO_SPECIES', () => {
 		expect(DEX_TO_SPECIES[4]).toBe('charmander')
 		expect(DEX_TO_SPECIES[7]).toBe('squirtle')
 		expect(DEX_TO_SPECIES[25]).toBe('pikachu')
+	})
+})
+
+describe('ensureSpeciesData', () => {
+	test('resolves without error', async () => {
+		await expect(ensureSpeciesData()).resolves.toBeUndefined()
+	})
+})
+
+describe('getSpeciesData - supplementary fields', () => {
+	test('has baseHappiness', () => {
+		expect(getSpeciesData('bulbasaur').baseHappiness).toBe(70)
+	})
+
+	test('pikachu has higher captureRate', () => {
+		expect(getSpeciesData('pikachu').captureRate).toBeGreaterThan(getSpeciesData('charmander').captureRate)
+	})
+
+	test('has names with en key', () => {
+		const data = getSpeciesData('charmander')
+		expect(data.names).toBeDefined()
+		expect(data.names.en).toBe('Charmander')
+	})
+
+	test('shinyChance is 1/4096', () => {
+		expect(getSpeciesData('bulbasaur').shinyChance).toBe(1 / 4096)
 	})
 })

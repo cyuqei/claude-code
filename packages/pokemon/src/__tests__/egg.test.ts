@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test'
-import { checkEggEligibility, generateEgg, advanceEggSteps, isEggReadyToHatch } from '../core/egg'
+import { checkEggEligibility, generateEgg, advanceEggSteps, isEggReadyToHatch, hatchEgg } from '../core/egg'
 import type { BuddyData } from '../types'
 import { generateCreature } from '../core/creature'
 
@@ -111,5 +111,50 @@ describe('isEggReadyToHatch', () => {
 	test('not ready when steps > 0', () => {
 		const egg = { id: 'test', obtainedAt: Date.now(), stepsRemaining: 1, totalSteps: 200, speciesId: 'pikachu' as const }
 		expect(isEggReadyToHatch(egg)).toBe(false)
+	})
+})
+
+describe('hatchEgg', () => {
+	test('creates a creature and removes egg', async () => {
+		const data = makeBuddyData()
+		const egg = { id: 'egg-1', obtainedAt: Date.now(), stepsRemaining: 0, totalSteps: 2000, speciesId: 'charmander' as const }
+		const result = await hatchEgg(data, egg)
+
+		expect(result.creature.speciesId).toBe('charmander')
+		expect(result.buddyData.creatures.length).toBe(data.creatures.length + 1)
+		expect(result.buddyData.eggs.length).toBe(0)
+	})
+
+	test('adds creature to party when slot available', async () => {
+		const data = makeBuddyData()
+		const egg = { id: 'egg-1', obtainedAt: Date.now(), stepsRemaining: 0, totalSteps: 2000, speciesId: 'pikachu' as const }
+		const result = await hatchEgg(data, egg)
+		const newCreature = result.creature
+		const inParty = result.buddyData.party.includes(newCreature.id)
+		expect(inParty).toBe(true)
+	})
+
+	test('increments totalEggsObtained', async () => {
+		const data = makeBuddyData()
+		const egg = { id: 'egg-1', obtainedAt: Date.now(), stepsRemaining: 0, totalSteps: 2000, speciesId: 'squirtle' as const }
+		const result = await hatchEgg(data, egg)
+		expect(result.buddyData.stats.totalEggsObtained).toBe(1)
+	})
+
+	test('updates dex entry with new species', async () => {
+		const data = makeBuddyData()
+		const egg = { id: 'egg-1', obtainedAt: Date.now(), stepsRemaining: 0, totalSteps: 2000, speciesId: 'charmander' as const }
+		const result = await hatchEgg(data, egg)
+		const entry = result.buddyData.dex.find(d => d.speciesId === 'charmander')
+		expect(entry).toBeDefined()
+		expect(entry!.caughtCount).toBe(1)
+	})
+
+	test('increments caughtCount for existing dex entry', async () => {
+		const data = makeBuddyData()
+		const egg = { id: 'egg-1', obtainedAt: Date.now(), stepsRemaining: 0, totalSteps: 2000, speciesId: 'bulbasaur' as const }
+		const result = await hatchEgg(data, egg)
+		const entry = result.buddyData.dex.find(d => d.speciesId === 'bulbasaur')
+		expect(entry!.caughtCount).toBe(2)
 	})
 })
