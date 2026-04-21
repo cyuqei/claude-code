@@ -41,6 +41,20 @@ export type NatureName = string
 export type NatureStat = 'attack' | 'defense' | 'spAtk' | 'spDef' | 'speed'
 export type NatureEffect = { plus: NatureStat | null; minus: NatureStat | null }
 
+// Move slot
+export type MoveSlot = { id: string; pp: number; maxPp: number }
+export const EMPTY_MOVE: MoveSlot = { id: '', pp: 0, maxPp: 0 }
+
+// Item ID (Showdown format string)
+export type ItemId = string
+
+// PC box (fixed 30 slots)
+export type PCBox = { name: string; slots: (string | null)[] }
+
+// Bag
+export type BagEntry = { id: ItemId; count: number }
+export type Bag = { items: BagEntry[] }
+
 // Gender
 export type Gender = 'male' | 'female' | 'genderless'
 
@@ -85,11 +99,16 @@ export type Creature = {
 	level: number
 	xp: number // Current level progress XP
 	totalXp: number // Total accumulated XP
+	nature: NatureName // Character nature
 	ev: Record<StatName, number> // Effort values
 	iv: Record<StatName, number> // Individual values (0-31)
+	moves: [MoveSlot, MoveSlot, MoveSlot, MoveSlot] // 4 move slots
+	ability: string // Showdown ability ID
+	heldItem: ItemId | null // Held item
 	friendship: number // Friendship (0-255)
 	isShiny: boolean
 	hatchedAt: number // Timestamp when obtained
+	pokeball: string // Pokeball type
 }
 
 // Egg
@@ -111,19 +130,21 @@ export type DexEntry = {
 
 // buddy-data.json complete structure
 export type BuddyData = {
-	version: 1
-	/** @deprecated Use party[0] instead. Kept for backward compat during migration. */
-	activeCreatureId?: string | null
+	version: 2
 	party: (string | null)[] // Always length 6, party[0] = active buddy
+	boxes: PCBox[] // PC storage (default 8 boxes × 30 slots)
 	creatures: Creature[]
 	eggs: Egg[]
 	dex: DexEntry[]
+	bag: Bag
 	stats: {
 		totalTurns: number
 		consecutiveDays: number
 		lastActiveDate: string // ISO date
 		totalEggsObtained: number
 		totalEvolutions: number
+		battlesWon: number
+		battlesLost: number
 	}
 }
 

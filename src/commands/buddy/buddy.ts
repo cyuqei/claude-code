@@ -37,14 +37,14 @@ import { BuddyPanel } from './BuddyPanel.js'
  * Load or initialize Pokémon buddy data.
  * Migrates from legacy buddy system if needed.
  */
-function getOrInitBuddyData(): BuddyData {
-  let data = loadBuddyData()
+async function getOrInitBuddyData(): Promise<BuddyData> {
+  let data = await loadBuddyData()
 
   // If no active creature (party empty), check for legacy companion to migrate
   if (!getActiveCreature(data) || data.creatures.length === 0) {
     const legacyCompanion = getGlobalConfig().companion
     if (legacyCompanion) {
-      data = migrateFromLegacy(legacyCompanion)
+      data = await migrateFromLegacy(legacyCompanion)
       saveBuddyData(data)
     }
   }
@@ -76,7 +76,7 @@ export async function call(
 
   // ── /buddy pet — trigger heart animation + XP + egg steps ──
   if (sub === 'pet') {
-    const data = getOrInitBuddyData()
+    const data = await getOrInitBuddyData()
     const creature = getActiveCreature(data)
     if (!creature) {
       onDone('no companion yet · run /buddy first', { display: 'system' })
@@ -100,7 +100,7 @@ export async function call(
       // Check hatch
       const readyEgg = data.eggs.find(isEggReadyToHatch)
       if (readyEgg) {
-        const { buddyData: updatedData, creature: newCreature } = hatchEgg(
+        const { buddyData: updatedData, creature: newCreature } = await hatchEgg(
           data,
           readyEgg,
         )
@@ -137,7 +137,7 @@ export async function call(
       onDone('Usage: /buddy rename <name>', { display: 'system' })
       return null
     }
-    const data = getOrInitBuddyData()
+    const data = await getOrInitBuddyData()
     const creature = getActiveCreature(data)
     if (!creature) {
       onDone('no companion yet · run /buddy first', { display: 'system' })
@@ -172,10 +172,10 @@ export async function call(
       return null
     }
 
-    const data = getOrInitBuddyData()
+    const data = await getOrInitBuddyData()
 
     // Create the creature
-    const creature = generateCreature(match)
+    const creature = await generateCreature(match)
     if (levelArg && !isNaN(levelArg) && levelArg >= 1 && levelArg <= 100) {
       creature.level = levelArg
     }
@@ -212,7 +212,7 @@ export async function call(
   }
 
   // ── /buddy (no args) — show unified BuddyPanel ──
-  const data = getOrInitBuddyData()
+  const data = await getOrInitBuddyData()
   let creature = getActiveCreature(data)
 
   // Auto-unmute when viewing
@@ -224,11 +224,11 @@ export async function call(
   if (!creature) {
     const legacyCompanion = getGlobalConfig().companion
     if (legacyCompanion) {
-      const migrated = migrateFromLegacy(legacyCompanion)
+      const migrated = await migrateFromLegacy(legacyCompanion)
       saveBuddyData(migrated)
       creature = getActiveCreature(migrated)!
     } else {
-      const defaultData = getDefaultBuddyData()
+      const defaultData = await getDefaultBuddyData()
       saveBuddyData(defaultData)
       creature = getActiveCreature(defaultData)!
     }
@@ -244,7 +244,7 @@ export async function call(
     spriteCached?.lines ?? getFallbackSprite(creature.speciesId)
 
   // Reload data to get latest state after possible initialization
-  const latestData = loadBuddyData()
+  const latestData = await loadBuddyData()
 
   return React.createElement(BuddyPanel, {
     buddyData: latestData,

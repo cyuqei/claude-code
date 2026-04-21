@@ -5,11 +5,13 @@ import { getSpeciesData } from '../data/species'
 import { determineGender } from './gender'
 import { levelFromXp } from '../data/xpTable'
 import { gen, TO_DEX_STAT } from '../data/pkmn'
+import { getDefaultMoveset, getDefaultAbility } from '../data/learnsets'
+import { randomNature } from '../data/nature'
 
 /**
  * Generate a new creature of the given species.
  */
-export function generateCreature(speciesId: SpeciesId, seed?: number): Creature {
+export async function generateCreature(speciesId: SpeciesId, seed?: number): Promise<Creature> {
 	const species = getSpeciesData(speciesId)
 	const actualSeed = seed ?? Math.floor(Math.random() * 0xffffffff)
 
@@ -29,11 +31,16 @@ export function generateCreature(speciesId: SpeciesId, seed?: number): Creature 
 		level: 1,
 		xp: 0,
 		totalXp: 0,
+		nature: randomNature(),
 		ev: { hp: 0, attack: 0, defense: 0, spAtk: 0, spDef: 0, speed: 0 },
 		iv,
+		moves: await getDefaultMoveset(speciesId, 1),
+		ability: getDefaultAbility(speciesId),
+		heldItem: null,
 		friendship: species.baseHappiness,
 		isShiny,
 		hatchedAt: Date.now(),
+		pokeball: 'pokeball',
 	}
 }
 

@@ -3462,7 +3462,7 @@ export function REPL({
             updateDailyStats: _updateDaily,
             incrementTurns: _incTurns,
           } = await import('@claude-code-best/pokemon');
-          const _data = _updateDaily(_incTurns(_load()));
+          const _data = _updateDaily(_incTurns(await _load()));
           const _creature = _getActive(_data);
           if (_creature) {
             // 1. Collect tool names from this turn's messages
@@ -3502,7 +3502,7 @@ export function REPL({
               _data.eggs = _data.eggs.map((e: any) => _advSteps(e, 3));
               const _readyEgg = _data.eggs.find(_isReady);
               if (_readyEgg) {
-                const { buddyData: _hatched, creature: _newC } = _hatchEgg(_data, _readyEgg);
+                const { buddyData: _hatched, creature: _newC } = await _hatchEgg(_data, _readyEgg);
                 Object.assign(_data, _hatched);
               }
             }

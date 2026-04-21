@@ -55,8 +55,8 @@ export function PokedexView({ buddyData }: PokedexViewProps) {
 						const species = getSpeciesData(speciesId)
 						const entry = dexMap.get(speciesId)
 						const discovered = !!entry
-						const isActive = buddyData.activeCreatureId
-							? buddyData.creatures.some((c) => c.id === buddyData.activeCreatureId && c.speciesId === speciesId)
+						const isActive = buddyData.party[0]
+							? buddyData.creatures.some((c) => c.id === buddyData.party[0] && c.speciesId === speciesId)
 							: false
 						const nextEvo = getNextEvolution(speciesId)
 

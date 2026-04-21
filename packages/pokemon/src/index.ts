@@ -4,6 +4,11 @@ export type {
 	NatureName,
 	NatureStat,
 	NatureEffect,
+	MoveSlot,
+	ItemId,
+	PCBox,
+	BagEntry,
+	Bag,
 	SpeciesId,
 	Gender,
 	EvolutionTrigger,
@@ -19,7 +24,7 @@ export type {
 	SpriteCache,
 	AnimMode,
 } from './types'
-export { STAT_NAMES, STAT_LABELS, ALL_SPECIES_IDS } from './types'
+export { STAT_NAMES, STAT_LABELS, ALL_SPECIES_IDS, EMPTY_MOVE } from './types'
 
 // Data
 export { SPECIES_DATA, DEX_TO_SPECIES, getSpeciesData, getAllSpeciesData, ensureSpeciesData, refreshAllSpeciesData } from './data/species'
@@ -28,6 +33,7 @@ export { xpForLevel, levelFromXp, xpToNextLevel } from './data/xpTable'
 export { SPECIES_NAMES, SPECIES_I18N, SPECIES_PERSONALITY } from './data/names'
 export { getAllNatureNames, randomNature, getNatureEffect } from './data/nature'
 export { getNextEvolution, EVOLUTION_CHAINS } from './data/evolution'
+export { getDefaultMoveset, getDefaultAbility, getNewLearnableMoves } from './data/learnsets'
 export { FROM_DEX_STAT, TO_DEX_STAT } from './data/pkmn'
 
 // Core
@@ -37,7 +43,14 @@ export { awardXP, getXpProgress } from './core/experience'
 export { awardEV, awardTurnEV, getEVSummary, resetEVCooldowns } from './core/effort'
 export { checkEvolution, evolve, canEvolveFurther } from './core/evolution'
 export { checkEggEligibility, generateEgg, advanceEggSteps, isEggReadyToHatch, hatchEgg, EGG_REQUIRED_DAYS } from './core/egg'
-export { loadBuddyData, saveBuddyData, getDefaultBuddyData, migrateFromLegacy, updateDailyStats, incrementTurns, addToParty, removeFromParty, swapPartySlots, setActivePartyMember } from './core/storage'
+export {
+	loadBuddyData, saveBuddyData, getDefaultBuddyData, migrateFromLegacy,
+	updateDailyStats, incrementTurns,
+	addToParty, removeFromParty, swapPartySlots, setActivePartyMember,
+	depositToBox, withdrawFromBox, moveInBox, renameBox,
+	findCreatureLocation, releaseCreature, getTotalCreatureCount, getAllCreatureIds,
+	addItemToBag, removeItemFromBag, getItemCount,
+} from './core/storage'
 export { loadSprite, fetchAndCacheSprite, getSpeciesDisplay } from './core/spriteCache'
 
 // Sprites

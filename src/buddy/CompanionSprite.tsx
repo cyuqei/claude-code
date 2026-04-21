@@ -26,6 +26,18 @@ const BUBBLE_SHOW = 20; // ticks → ~10s at 500ms
 const FADE_WINDOW = 6; // last ~3s the bubble dims so you know it's about to go
 const PET_BURST_MS = 2500; // how long hearts float after /buddy pet
 
+// Module-level cache for sync access in render
+let _cachedCreature: Creature | null = null;
+let _cacheLoadPromise: Promise<void> | null = null;
+
+function ensureCreatureCache(): void {
+  if (_cachedCreature !== null || _cacheLoadPromise) return;
+  _cacheLoadPromise = loadBuddyData().then(data => {
+    _cachedCreature = getActiveCreature(data);
+    _cacheLoadPromise = null;
+  }).catch(() => { _cacheLoadPromise = null; });
+}
+
 // Hearts float up-and-out over 5 ticks (~2.5s). Prepended above the sprite.
 const H = figures.heart;
 const PET_HEARTS = [
@@ -105,15 +117,25 @@ function spriteColWidth(nameWidth: number): number {
 }
 
 /**
- * Get active Pokémon creature, or null if buddy system not initialized.
+ * Get active Pokémon creature from cache, or null if not loaded yet.
+ * Triggers async load if cache is empty.
  */
 function getPokemonCreature(): Creature | null {
   try {
-    const data = loadBuddyData();
-    return getActiveCreature(data);
+    ensureCreatureCache();
+    return _cachedCreature;
   } catch {
     return null;
   }
+}
+
+/**
+ * Force-refresh the creature cache (call after data changes).
+ */
+export function refreshCreatureCache(): void {
+  _cachedCreature = null;
+  _cacheLoadPromise = null;
+  ensureCreatureCache();
 }
 
 export function companionReservedColumns(terminalColumns: number, speaking: boolean): number {

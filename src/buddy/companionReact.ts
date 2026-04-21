@@ -34,11 +34,11 @@ const MAX_RECENT = 8
 /**
  * Trigger a companion reaction after a query turn.
  */
-export function triggerCompanionReaction(
+export async function triggerCompanionReaction(
   messages: Message[],
   setReaction: (text: string | undefined) => void,
-): void {
-  const data = loadBuddyData()
+): Promise<void> {
+  const data = await loadBuddyData()
   const creature = getActiveCreature(data)
   if (!creature || getGlobalConfig().companionMuted) return
 

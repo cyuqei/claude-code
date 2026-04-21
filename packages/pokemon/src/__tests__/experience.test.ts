@@ -49,23 +49,23 @@ describe('levelFromXp', () => {
 })
 
 describe('awardXP', () => {
-	test('awards XP and returns updated creature', () => {
-		const c = generateCreature('bulbasaur')
+	test('awards XP and returns updated creature', async () => {
+		const c = await generateCreature('bulbasaur')
 		const result = awardXP(c, 10)
 		expect(result.creature.totalXp).toBe(10)
 		expect(result.leveledUp).toBeDefined()
 	})
 
-	test('large XP can cause level up', () => {
-		const c = generateCreature('bulbasaur')
+	test('large XP can cause level up', async () => {
+		const c = await generateCreature('bulbasaur')
 		// Award enough XP for several levels
 		const result = awardXP(c, 10000)
 		expect(result.creature.level).toBeGreaterThan(1)
 		expect(result.leveledUp).toBe(true)
 	})
 
-	test('level capped at 100', () => {
-		const c = generateCreature('bulbasaur')
+	test('level capped at 100', async () => {
+		const c = await generateCreature('bulbasaur')
 		c.level = 100
 		c.totalXp = 1000000
 		const result = awardXP(c, 999999)
@@ -75,8 +75,8 @@ describe('awardXP', () => {
 })
 
 describe('getXpProgress', () => {
-	test('new creature has 0 XP progress', () => {
-		const c = generateCreature('bulbasaur')
+	test('new creature has 0 XP progress', async () => {
+		const c = await generateCreature('bulbasaur')
 		const progress = getXpProgress(c)
 		expect(progress.current).toBe(0)
 		expect(progress.percentage).toBe(0)

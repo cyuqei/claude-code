@@ -3,6 +3,7 @@ import type { BuddyData, Creature, Egg, SpeciesId } from '../types'
 import { ALL_SPECIES_IDS } from '../types'
 import { getSpeciesData } from '../data/species'
 import { generateCreature } from './creature'
+import { addToParty, depositToBox } from './storage'
 
 /** Days of consecutive coding needed to be eligible for an egg */
 export const EGG_REQUIRED_DAYS = 3
@@ -64,13 +65,14 @@ export function isEggReadyToHatch(egg: Egg): boolean {
 
 /**
  * Hatch an egg, creating a new creature and updating buddy data.
+ * Tries to add to party first, then deposits to PC box.
  */
-export function hatchEgg(buddyData: BuddyData, egg: Egg): { buddyData: BuddyData; creature: Creature } {
-	const creature = generateCreature(egg.speciesId)
+export async function hatchEgg(buddyData: BuddyData, egg: Egg): Promise<{ buddyData: BuddyData; creature: Creature }> {
+	const creature = await generateCreature(egg.speciesId)
 	creature.hatchedAt = Date.now()
 
-	// Update buddy data
-	const updatedData: BuddyData = {
+	// Add creature to list
+	let updatedData: BuddyData = {
 		...buddyData,
 		creatures: [...buddyData.creatures, creature],
 		eggs: buddyData.eggs.filter((e) => e.id !== egg.id),
@@ -79,6 +81,15 @@ export function hatchEgg(buddyData: BuddyData, egg: Egg): { buddyData: BuddyData
 			...buddyData.stats,
 			totalEggsObtained: buddyData.stats.totalEggsObtained + 1,
 		},
+	}
+
+	// Place in party or PC box
+	const partyResult = addToParty(updatedData, creature.id)
+	if (partyResult.added) {
+		updatedData = partyResult.data
+	} else {
+		const boxResult = depositToBox(updatedData, creature.id)
+		if (boxResult.deposited) updatedData = boxResult.data
 	}
 
 	return { buddyData: updatedData, creature }

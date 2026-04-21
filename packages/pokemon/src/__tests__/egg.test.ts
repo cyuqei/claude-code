@@ -5,18 +5,45 @@ import { generateCreature } from '../core/creature'
 
 function makeBuddyData(overrides: Partial<BuddyData['stats']> = {}): BuddyData {
 	const creature = generateCreature('bulbasaur')
+	// Sync mock — generateCreature is async but for test setup we use the resolved structure
 	return {
-		version: 1,
-		party: [creature.id, null, null, null, null, null],
-		creatures: [creature],
+		version: 2,
+		party: ['test-creature-id', null, null, null, null, null],
+		boxes: [{ name: 'Box 1', slots: Array(30).fill(null) }],
+		creatures: [{
+			id: 'test-creature-id',
+			speciesId: 'bulbasaur',
+			gender: 'male' as const,
+			level: 5,
+			xp: 0,
+			totalXp: 100,
+			nature: 'hardy',
+			ev: { hp: 0, attack: 0, defense: 0, spAtk: 0, spDef: 0, speed: 0 },
+			iv: { hp: 15, attack: 15, defense: 15, spAtk: 15, spDef: 15, speed: 15 },
+			moves: [
+				{ id: 'tackle', pp: 35, maxPp: 35 },
+				{ id: '', pp: 0, maxPp: 0 },
+				{ id: '', pp: 0, maxPp: 0 },
+				{ id: '', pp: 0, maxPp: 0 },
+			],
+			ability: 'overgrow',
+			heldItem: null,
+			friendship: 70,
+			isShiny: false,
+			hatchedAt: Date.now(),
+			pokeball: 'pokeball',
+		}],
 		eggs: [],
 		dex: [{ speciesId: 'bulbasaur', discoveredAt: Date.now(), caughtCount: 1, bestLevel: 1 }],
+		bag: { items: [] },
 		stats: {
 			totalTurns: 50,
 			consecutiveDays: 7,
 			lastActiveDate: new Date().toISOString().split('T')[0],
 			totalEggsObtained: 0,
 			totalEvolutions: 0,
+			battlesWon: 0,
+			battlesLost: 0,
 			...overrides,
 		},
 	}

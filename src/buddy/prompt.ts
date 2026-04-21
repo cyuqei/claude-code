@@ -17,11 +17,11 @@ A ${species} named ${name} sits beside the user's input box and occasionally com
 When the user addresses ${name} directly (by name), its bubble will answer. Your job in that moment is to stay out of the way: respond in ONE line or less, or just answer any part of the message meant for you. Don't explain that you're not ${name} — they know. Don't narrate what ${name} might say — the bubble handles that.`
 }
 
-export function getCompanionIntroAttachment(
+export async function getCompanionIntroAttachment(
   messages: Message[] | undefined,
-): Attachment[] {
+): Promise<Attachment[]> {
   if (!feature('BUDDY')) return []
-  const data = loadBuddyData()
+  const data = await loadBuddyData()
   const creature = getActiveCreature(data)
   if (!creature || getGlobalConfig().companionMuted) return []
 
