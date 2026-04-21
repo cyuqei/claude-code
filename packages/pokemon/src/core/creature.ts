@@ -4,6 +4,7 @@ import { STAT_NAMES } from '../types'
 import { getSpeciesData } from '../data/species'
 import { determineGender } from './gender'
 import { levelFromXp } from '../data/xpTable'
+import { gen, TO_DEX_STAT } from '../data/pkmn'
 
 /**
  * Generate a new creature of the given species.
@@ -37,28 +38,30 @@ export function generateCreature(speciesId: SpeciesId, seed?: number): Creature 
 }
 
 /**
- * Calculate actual stats for a creature using Pokémon stat formulas.
- * HP: floor((2 * base + iv + floor(ev/4)) * level / 100) + level + 10
- * Other: floor((2 * base + iv + floor(ev/4)) * level / 100) + 5
+ * Calculate actual stats for a creature using @pkmn/data stats.calc().
+ * Handles base stats, IV, EV, level, and nature correction internally.
  */
 export function calculateStats(creature: Creature): StatsResult {
-	const species = getSpeciesData(creature.speciesId)
-	const level = creature.level
-	const result: StatsResult = {} as StatsResult
+	const species = gen.species.get(creature.speciesId)
+	if (!species) throw new Error(`Species ${creature.speciesId} not found`)
 
+	// Get nature if creature has one (Phase 1 adds nature field)
+	const nature = 'nature' in creature && creature.nature
+		? gen.natures.get(creature.nature as string)
+		: undefined
+
+	const result = {} as StatsResult
 	for (const stat of STAT_NAMES) {
-		const base = species.baseStats[stat]
-		const iv = creature.iv[stat]
-		const ev = creature.ev[stat]
-		const raw = Math.floor((2 * base + iv + Math.floor(ev / 4)) * level / 100)
-
-		if (stat === 'hp') {
-			result[stat] = raw + level + 10
-		} else {
-			result[stat] = raw + 5
-		}
+		const dexKey = TO_DEX_STAT[stat] as 'hp' | 'atk' | 'def' | 'spa' | 'spd' | 'spe'
+		result[stat] = gen.stats.calc(
+			dexKey,
+			species.baseStats[dexKey],
+			creature.iv[stat],
+			creature.ev[stat],
+			creature.level,
+			nature ?? undefined,
+		)
 	}
-
 	return result
 }
 

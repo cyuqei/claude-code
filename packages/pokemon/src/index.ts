@@ -1,6 +1,9 @@
 // Types
 export type {
 	StatName,
+	NatureName,
+	NatureStat,
+	NatureEffect,
 	SpeciesId,
 	Gender,
 	EvolutionTrigger,
@@ -23,7 +26,9 @@ export { SPECIES_DATA, DEX_TO_SPECIES, getSpeciesData, getAllSpeciesData, ensure
 export { DEFAULT_EV_MAPPING, getEVForTool, MAX_EV_PER_STAT, MAX_EV_TOTAL } from './data/evMapping'
 export { xpForLevel, levelFromXp, xpToNextLevel } from './data/xpTable'
 export { SPECIES_NAMES, SPECIES_I18N, SPECIES_PERSONALITY } from './data/names'
+export { getAllNatureNames, randomNature, getNatureEffect } from './data/nature'
 export { getNextEvolution, EVOLUTION_CHAINS } from './data/evolution'
+export { FROM_DEX_STAT, TO_DEX_STAT } from './data/pkmn'
 
 // Core
 export { generateCreature, calculateStats, getCreatureName, recalculateLevel, getActiveCreature, getTotalEV } from './core/creature'

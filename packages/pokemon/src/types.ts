@@ -36,6 +36,11 @@ export const ALL_SPECIES_IDS: SpeciesId[] = [
 	'pikachu',
 ]
 
+// Nature (delegated to @pkmn/sim Dex.natures)
+export type NatureName = string
+export type NatureStat = 'attack' | 'defense' | 'spAtk' | 'spDef' | 'speed'
+export type NatureEffect = { plus: NatureStat | null; minus: NatureStat | null }
+
 // Gender
 export type Gender = 'male' | 'female' | 'genderless'
 

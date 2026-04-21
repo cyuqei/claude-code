@@ -13,7 +13,7 @@ export function checkEvolution(creature: Creature): EvolutionResult | null {
 	if (!nextEvo) return null
 
 	// Check level-up conditions
-	if (nextEvo.trigger === 'level_up' && creature.level >= nextEvo.minLevel) {
+	if (nextEvo.trigger === 'level_up' && nextEvo.minLevel != null && creature.level >= nextEvo.minLevel) {
 		return {
 			from: creature.speciesId,
 			to: nextEvo.to,
