@@ -154,10 +154,33 @@ function getTypeColor(type: string): Color {
 
 /** Group species by evolution chain for visual display */
 function groupByChain(): SpeciesId[][] {
-	return [
-		['bulbasaur', 'ivysaur', 'venusaur'],
-		['charmander', 'charmeleon', 'charizard'],
-		['squirtle', 'wartortle', 'blastoise'],
-		['pikachu'],
-	]
+	const visited = new Set<SpeciesId>()
+	const chains: SpeciesId[][] = []
+
+	for (const id of ALL_SPECIES_IDS) {
+		if (visited.has(id)) continue
+
+		// Walk back to find chain head
+		let head: SpeciesId = id
+		for (const candidate of ALL_SPECIES_IDS) {
+			const evo = getNextEvolution(candidate)
+			if (evo?.to === head) {
+				head = candidate
+				break
+			}
+		}
+
+		// Walk forward to build chain
+		const chain: SpeciesId[] = []
+		let current: SpeciesId | undefined = head
+		while (current && !visited.has(current)) {
+			chain.push(current)
+			visited.add(current)
+			current = getNextEvolution(current)?.to
+		}
+
+		if (chain.length > 0) chains.push(chain)
+	}
+
+	return chains
 }

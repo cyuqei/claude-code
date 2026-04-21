@@ -1,7 +1,7 @@
 import React from 'react'
 import { Box, Text, type Color } from '@anthropic/ink'
 import type { SpeciesId, StatName } from '../types'
-import { STAT_NAMES, STAT_LABELS } from '../types'
+import { STAT_NAMES, STAT_LABELS, ALL_SPECIES_IDS } from '../types'
 import { getSpeciesData } from '../data/species'
 import { getNextEvolution } from '../data/evolution'
 import { StatBar } from './StatBar'
@@ -135,12 +135,12 @@ export function SpeciesDetail({ speciesId, caughtLevel, spriteLines }: SpeciesDe
 
 /** Render evolution chain arrow */
 function EvolutionChain({ speciesId }: { speciesId: SpeciesId }) {
-	// Find the chain head
-	const chainHeads: SpeciesId[] = ['bulbasaur', 'charmander', 'squirtle', 'pikachu']
+	// Walk back to find chain head
 	let head: SpeciesId = speciesId
-	for (const starter of chainHeads) {
-		if (isInChain(speciesId, starter)) {
-			head = starter
+	for (const candidate of ALL_SPECIES_IDS) {
+		const evo = getNextEvolution(candidate)
+		if (evo?.to === head) {
+			head = candidate
 			break
 		}
 	}
@@ -172,15 +172,5 @@ function EvolutionChain({ speciesId }: { speciesId: SpeciesId }) {
 			))}
 		</Box>
 	)
-}
-
-function isInChain(target: SpeciesId, head: SpeciesId): boolean {
-	let current: SpeciesId | undefined = head
-	while (current) {
-		if (current === target) return true
-		const next = getNextEvolution(current)
-		current = next ? next.to : undefined
-	}
-	return false
 }
 
