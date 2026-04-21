@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test'
 import type { SpeciesId, Creature } from '../types'
-import { generateCreature, calculateStats, getCreatureName, getTotalEV, recalculateLevel } from '../core/creature'
+import { generateCreature, calculateStats, getCreatureName, getTotalEV, recalculateLevel, getActiveCreature } from '../core/creature'
 import { getSpeciesData } from '../data/species'
 
 describe('generateCreature', () => {
@@ -103,5 +103,82 @@ describe('getTotalEV', () => {
 		const c = await generateCreature('bulbasaur')
 		c.ev = { hp: 10, attack: 20, defense: 30, spAtk: 40, spDef: 50, speed: 60 }
 		expect(getTotalEV(c)).toBe(210)
+	})
+})
+
+describe('recalculateLevel', () => {
+	test('returns same creature if level unchanged', async () => {
+		const c = await generateCreature('bulbasaur', 42)
+		const result = recalculateLevel(c)
+		expect(result.level).toBe(c.level)
+	})
+
+	test('updates level based on totalXp', async () => {
+		const c = await generateCreature('charmander', 42)
+		c.totalXp = 8000
+		const result = recalculateLevel(c)
+		expect(result.level).toBeGreaterThan(1)
+	})
+})
+
+describe('getActiveCreature', () => {
+	test('returns null when party is empty', async () => {
+		const c = await generateCreature('bulbasaur')
+		const result = getActiveCreature({ party: [null, null, null, null, null, null], creatures: [c] })
+		expect(result).toBeNull()
+	})
+
+	test('returns creature from party[0]', async () => {
+		const c = await generateCreature('pikachu')
+		const result = getActiveCreature({ party: [c.id, null, null, null, null, null], creatures: [c] })
+		expect(result).not.toBeNull()
+		expect(result!.id).toBe(c.id)
+	})
+
+	test('returns creature from activeCreatureId (legacy)', async () => {
+		const c = await generateCreature('squirtle')
+		const result = getActiveCreature({ activeCreatureId: c.id, creatures: [c] })
+		expect(result).not.toBeNull()
+		expect(result!.id).toBe(c.id)
+	})
+
+	test('prefers party[0] over activeCreatureId', async () => {
+		const c1 = await generateCreature('bulbasaur')
+		const c2 = await generateCreature('charmander')
+		const result = getActiveCreature({ party: [c1.id, null, null, null, null, null], activeCreatureId: c2.id, creatures: [c1, c2] })
+		expect(result!.id).toBe(c1.id)
+	})
+
+	test('returns null when creature ID not found', () => {
+		const result = getActiveCreature({ party: ['nonexistent', null, null, null, null, null], creatures: [] })
+		expect(result).toBeNull()
+	})
+})
+
+describe('calculateStats - nature effects', () => {
+	test('adamant nature boosts attack and lowers spAtk', async () => {
+		const c = await generateCreature('charmander', 42)
+		c.level = 50
+		c.nature = 'adamant'
+		const adamantStats = calculateStats(c)
+
+		c.nature = 'hardy'
+		const hardyStats = calculateStats(c)
+
+		expect(adamantStats.attack).toBeGreaterThan(hardyStats.attack)
+		expect(adamantStats.spAtk).toBeLessThan(hardyStats.spAtk)
+	})
+
+	test('timid nature boosts speed and lowers attack', async () => {
+		const c = await generateCreature('pikachu', 42)
+		c.level = 50
+		c.nature = 'timid'
+		const timidStats = calculateStats(c)
+
+		c.nature = 'hardy'
+		const hardyStats = calculateStats(c)
+
+		expect(timidStats.speed).toBeGreaterThan(hardyStats.speed)
+		expect(timidStats.attack).toBeLessThan(hardyStats.attack)
 	})
 })
