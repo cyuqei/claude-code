@@ -2242,7 +2242,8 @@ function PromptInput({
       showTeamsDialog ||
       showQuickOpen ||
       showGlobalSearch ||
-      showHistoryPicker
+      showHistoryPicker ||
+      isLocalJSXCommandActive
     ) {
       return
     }
