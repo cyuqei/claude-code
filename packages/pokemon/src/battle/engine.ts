@@ -232,14 +232,13 @@ export function executeTurn(
   const { battle } = battleInit
   const prevLogLen = battle.log.length
 
-  // Build choice string
+  // Build player choice string
   let p1Choice: string
   switch (action.type) {
     case 'move':
       p1Choice = `move ${action.moveIndex + 1}`
       break
     case 'switch': {
-      // Find the party slot number for this creature (sim uses 1-based index)
       const p1Pokemon: any[] = battle.p1.pokemon
       const switchIdx = p1Pokemon.findIndex((p: any) => toID(p.name) === action.creatureId || p.name === action.creatureId)
       p1Choice = switchIdx >= 0 ? `switch ${switchIdx + 1}` : 'move 1'
@@ -252,13 +251,39 @@ export function executeTurn(
       p1Choice = 'move 1'
   }
 
-  // AI choice
-  const aiPokemon = projectPokemon(battle.p2.active[0])
-  const aiMoveIndex = chooseAIMove(aiPokemon)
-  const p2Choice = `move ${aiMoveIndex + 1}`
+  // AI choice — pick a legal move for the active opponent Pokémon
+  let p2Choice: string
+  const p2Active = battle.p2.active[0]
+  if (p2Active?.fainted) {
+    // AI needs to switch to next non-fainted Pokémon
+    const p2Pokemon: any[] = battle.p2.pokemon
+    const nextAlive = p2Pokemon.findIndex((p: any, i: number) => i > 0 && !p.fainted && p.hp > 0)
+    p2Choice = nextAlive >= 0 ? `switch ${nextAlive + 1}` : 'pass'
+  } else {
+    const aiPokemon = projectPokemon(battle.p2.active[0])
+    const aiMoveIndex = chooseAIMove(aiPokemon)
+    p2Choice = `move ${aiMoveIndex + 1}`
+  }
 
-  // Execute
-  battle.makeChoices(p1Choice, p2Choice)
+  // Handle player forced switch (fainted active Pokémon)
+  const p1Active = battle.p1.active[0]
+  if (p1Active?.fainted || p1Active?.hp === 0) {
+    const p1Pokemon: any[] = battle.p1.pokemon
+    const nextAlive = p1Pokemon.findIndex((p: any, i: number) => i > 0 && !p.fainted && p.hp > 0)
+    if (nextAlive >= 0) {
+      p1Choice = `switch ${nextAlive + 1}`
+    } else {
+      p1Choice = 'pass'
+    }
+  }
+
+  // Execute — use try/catch for safety
+  try {
+    battle.makeChoices(p1Choice, p2Choice)
+  } catch {
+    // If choices fail (e.g. mid-turn faint), try pass
+    try { battle.makeChoices('pass', 'pass') } catch { /* battle likely ended */ }
+  }
 
   // Parse new log entries
   const newLog = battle.log.slice(prevLogLen)
