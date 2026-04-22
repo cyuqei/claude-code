@@ -2,7 +2,7 @@ import { Dex } from '@pkmn/sim'
 import type { SpeciesData, SpeciesId, GrowthRate } from '../types'
 import { getSpecies, mapBaseStats, mapGenderRatio } from './pkmn'
 import { getNextEvolution } from './evolution'
-import { SPECIES_I18N, SPECIES_PERSONALITY } from './names'
+import { SPECIES_PERSONALITY } from './names'
 
 // ─── Dynamic species list from @pkmn/sim Dex ───
 
@@ -111,7 +111,6 @@ function buildEvolutionChain(speciesId: SpeciesId): SpeciesData['evolutionChain'
 function buildSpeciesData(id: SpeciesId): SpeciesData {
   const dex = getSpecies(id)
   const sup = SUPPLEMENT[id] ?? DEFAULT_SUPPLEMENT
-  const i18n = SPECIES_I18N[id]
   const personality = SPECIES_PERSONALITY[id]
 
   if (!dex) {
@@ -121,7 +120,7 @@ function buildSpeciesData(id: SpeciesId): SpeciesData {
   return {
     id,
     name: dex.name,
-    names: i18n ?? { en: dex.name },
+    names: { en: dex.name },
     dexNumber: dex.num,
     genderRate: mapGenderRatio(dex.genderRatio as { M: number; F: number } | undefined),
     baseStats: mapBaseStats(dex.baseStats),

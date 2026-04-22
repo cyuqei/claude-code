@@ -112,7 +112,7 @@ export function PokedexView({ buddyData }: PokedexViewProps) {
                 <Text>{isActive ? <Text color={YELLOW}>▶</Text> : ' '}</Text>
                 <Text color={GRAY}>#{String(species.dexNumber).padStart(3, '0')} </Text>
                 <Text color={WHITE} bold={isActive}>
-                  {(species.names as Record<string, string>).zh ?? species.name}
+                  {species.name}
                 </Text>
                 <Text>
                   {' '}

@@ -266,19 +266,28 @@ export function incrementTurns(data: BuddyData): BuddyData {
 
 // ─── Party operations ───
 
+/** Compact party: move all non-null to front, pad with nulls to length 6 */
+export function compactParty(party: (string | null)[]): (string | null)[] {
+  const filled = party.filter((id): id is string => id !== null)
+  return [...filled, ...Array(6).fill(null)].slice(0, 6)
+}
+
 export function addToParty(data: BuddyData, creatureId: string): { data: BuddyData; added: boolean } {
   const party = [...data.party]
   const emptyIdx = party.findIndex(p => p === null)
   if (emptyIdx === -1) return { data, added: false }
   party[emptyIdx] = creatureId
-  return { data: { ...data, party }, added: true }
+  return { data: { ...data, party: compactParty(party) }, added: true }
 }
 
 export function removeFromParty(data: BuddyData, slotIndex: number): BuddyData {
   if (slotIndex < 0 || slotIndex >= 6) return data
   const party = [...data.party]
+  // Don't remove if it would leave party empty
+  const count = party.filter(Boolean).length
+  if (count <= 1) return data
   party[slotIndex] = null
-  return { ...data, party }
+  return { ...data, party: compactParty(party) }
 }
 
 export function swapPartySlots(data: BuddyData, indexA: number, indexB: number): BuddyData {
@@ -287,7 +296,7 @@ export function swapPartySlots(data: BuddyData, indexA: number, indexB: number):
   const b = party[indexB]
   party[indexA] = b
   party[indexB] = a
-  return { ...data, party }
+  return { ...data, party: compactParty(party) }
 }
 
 export function setActivePartyMember(data: BuddyData, creatureId: string): BuddyData {
@@ -300,7 +309,7 @@ export function setActivePartyMember(data: BuddyData, creatureId: string): Buddy
   } else {
     party[0] = creatureId
   }
-  return { ...data, party }
+  return { ...data, party: compactParty(party) }
 }
 
 // ─── PC Box operations ───

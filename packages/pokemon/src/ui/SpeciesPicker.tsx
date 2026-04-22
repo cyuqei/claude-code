@@ -19,7 +19,7 @@ const ALL_ENTRIES: SpeciesEntry[] = ALL_SPECIES_IDS.map(id => {
   return {
     id,
     name: data.name,
-    displayName: (data.names as Record<string, string>).zh ?? data.name,
+    displayName: data.name,
     dexNumber: data.dexNumber,
     types: data.types as string[],
   }

@@ -52,7 +52,7 @@ export { checkEggEligibility, generateEgg, advanceEggSteps, isEggReadyToHatch, h
 export {
   loadBuddyData, saveBuddyData, getDefaultBuddyData, migrateFromLegacy,
   updateDailyStats, incrementTurns,
-  addToParty, removeFromParty, swapPartySlots, setActivePartyMember,
+  addToParty, removeFromParty, swapPartySlots, setActivePartyMember, compactParty,
   depositToBox, withdrawFromBox, moveInBox, renameBox,
   findCreatureLocation, releaseCreature, getTotalCreatureCount, getAllCreatureIds,
   addItemToBag, removeItemFromBag, getItemCount,
@@ -62,6 +62,7 @@ export { loadSprite, fetchAndCacheSprite, getSpeciesDisplay } from './core/sprit
 // Sprites
 export { renderAnimatedSprite, shrinkSprite, getIdleAnimMode, getPetOverlay } from './sprites/renderer'
 export { getFallbackSprite } from './sprites/fallback'
+export { SpeciesPicker } from './ui/SpeciesPicker'
 
 // UI Components
 export { CompanionCard } from './ui/CompanionCard'

@@ -59,7 +59,7 @@ export function SpeciesDetail({ speciesId, caughtLevel, spriteLines }: SpeciesDe
       {/* Header */}
       <Box justifyContent="space-between">
         <Box>
-          <Text bold color={CYAN}>#{String(species.dexNumber).padStart(3, '0')} {species.names.zh ?? species.name}</Text>
+          <Text bold color={CYAN}>#{String(species.dexNumber).padStart(3, '0')} {species.name}</Text>
         </Box>
         {caughtLevel && <Text color={GREEN}>Best: Lv.{caughtLevel}</Text>}
       </Box>
@@ -163,7 +163,7 @@ function EvolutionChain({ speciesId }: { speciesId: SpeciesId }) {
         <React.Fragment key={sid}>
           {i > 0 && <Text color={GRAY}> → </Text>}
           <Text color={sid === speciesId ? CYAN : GRAY} bold={sid === speciesId}>
-            {getSpeciesData(sid).names.zh ?? getSpeciesData(sid).name}
+            {getSpeciesData(sid).name}
           </Text>
           {i < chain.length - 1 && getNextEvolution(sid) && (
             <Text color={GRAY}> Lv.{getNextEvolution(sid)!.minLevel}</Text>

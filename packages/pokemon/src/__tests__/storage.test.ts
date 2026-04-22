@@ -112,16 +112,24 @@ describe('addToParty', () => {
 })
 
 describe('removeFromParty', () => {
-  test('removes creature at index', () => {
-    const data = makeData(2)
-    const updated = removeFromParty(data, 1)
-    expect(updated.party[1]).toBeNull()
+  test('removes creature and compacts party', () => {
+    const data = makeData(3)
+    const updated = removeFromParty(data, 0)
+    expect(updated.party[0]).toBe('creature-1')
+    expect(updated.party[1]).toBe('creature-2')
+    expect(updated.party[2]).toBeNull()
   })
 
   test('does nothing for out-of-bounds index', () => {
     const data = makeData()
     const updated = removeFromParty(data, 10)
     expect(updated.party).toEqual(data.party)
+  })
+
+  test('cannot remove last party member', () => {
+    const data = makeData(1)
+    const updated = removeFromParty(data, 0)
+    expect(updated.party[0]).toBe('creature-0')
   })
 })
 

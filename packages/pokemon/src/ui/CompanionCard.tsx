@@ -67,7 +67,7 @@ export function CompanionCard({ creature, buddyData, spriteLines }: CompanionCar
 
   // Evolution hint
   const evoHint = nextEvo ? (
-    <Text color={GRAY}> → <Text color={CYAN}>{getSpeciesData(nextEvo.to).names.zh ?? getSpeciesData(nextEvo.to).name}</Text> Lv.{nextEvo.minLevel}</Text>
+    <Text color={GRAY}> → <Text color={CYAN}>{getSpeciesData(nextEvo.to).name}</Text> Lv.{nextEvo.minLevel}</Text>
   ) : null
 
   return (
@@ -84,7 +84,7 @@ export function CompanionCard({ creature, buddyData, spriteLines }: CompanionCar
 
       {/* Species + type + gender */}
       <Box>
-        <Text color={GRAY}>{species.names.zh ?? species.name}</Text>
+        <Text color={GRAY}>{species.name}</Text>
         <Text> </Text>
         {typeBadges}
         {genderSymbol && <Text> {genderSymbol}</Text>}
